@@ -22,9 +22,9 @@ conda activate xvla
 bash scripts/depoly.sh
 ```
 
-Next, run the evaluation scripts to test the policy. To evaluate across different simulations, make sure to set up the corresponding environments: Libero, Simpler, Calvin, VLABench, and NAVSIM.
+Next, run the evaluation scripts to test the policy. To evaluate across different simulations, make sure to set up the corresponding environments: [Libero](https://github.com/Lifelong-Robot-Learning/LIBERO), [Simpler](https://github.com/simpler-env/SimplerEnv), [Calvin](https://github.com/mees/calvin), [VLABench](https://github.com/OpenMOSS/VLABench), and [NAVSIM](https://github.com/autonomousvision/navsim).
 
-For example, to evaluate the policy on the Libero benchmark, you can run the following commands after [installing libero in a separate Conda environment](https://github.com/Lifelong-Robot-Learning/LIBERO):
+For example, to evaluate the policy on the Libero benchmark, you can run the following commands after [installing Libero in a separate Conda environment](https://github.com/Lifelong-Robot-Learning/LIBERO):
 ```
 conda activate libero
 bash eval/libero/client.sh
