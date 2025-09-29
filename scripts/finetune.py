@@ -42,11 +42,14 @@ def get_args_parser():
     parser.add_argument('--batch-size', default=16, type=int)
     parser.add_argument('--learning_rate', default=1e-4, type=float)
     
+    
+    
     parser.add_argument('--iters', default=1000000, type=int)
     parser.add_argument('--freeze_steps', default=1000, type=float)
     parser.add_argument('--warmup_steps', default=2000, type=float)
     parser.add_argument('--train_metas_path', type=str)
     parser.add_argument('--precision', default='fp16', type=str)
+    parser.add_argument('--use_local_vlm', default=None, type=str)
     
 
     parser.add_argument('--learning_coef', default=1., type=float)
@@ -79,7 +82,7 @@ def main(args):
                               project_dir=output_dir, kwargs_handlers=[kwargs])
     accelerator.init_trackers("HFP_Training")
     torch.distributed.barrier()
-    model = xvla(pretrained = args.pretrained)
+    model = xvla(pretrained = args.pretrained, use_local_vlm = args.use_local_vlm)
     text_processor = model.text_preprocessor
     
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad) / 1000 / 1000

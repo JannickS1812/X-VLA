@@ -15,6 +15,7 @@
 # ------------------------------------------------------------------------------
 
 from __future__ import annotations
+from json import encoder
 
 from typing import Any, Dict, Tuple
 
@@ -69,7 +70,7 @@ class XVLA(nn.Module):
         num_domains: int = 30,
         len_soft_prompts: int = 32,
         use_hetero_proj: bool = False,
-        action_mode: str = "ee6d",
+        action_mode: str = "ee6d"
     ):
         """
         Parameters
@@ -103,15 +104,11 @@ class XVLA(nn.Module):
         self.num_actions = num_actions
 
         # Modules
-        assert encoder_name in {
-            "microsoft/Florence-2-base",
-            "microsoft/Florence-2-large",
-        }, "Only microsoft/Florence-2-base and microsoft/Florence-2-large are supported."
+        assert 'Florence' in encoder_name, "Only microsoft/Florence-2-base and microsoft/Florence-2-large are supported."
         self.vlm = AutoModelForCausalLM.from_pretrained(
             encoder_name,
             torch_dtype="auto",
-            trust_remote_code=True,
-            local_files_only=True
+            trust_remote_code=True
         )
         # Remove decoder-specific components to reduce memory and ensure we only
         # use encoder pathways. Guard these in case internals change.
@@ -446,7 +443,7 @@ class XVLA(nn.Module):
         uvicorn.run(self.app, host=host, port=port)
 
 
-def xvla(device: str = "cuda", pretrained: str | None = None, action_mode = 'ee6d', **kwargs):
+def xvla(device: str = "cuda", pretrained: str | None = None, action_mode = 'ee6d', use_local_vlm = None, **kwargs):
     """
     Factory for an XVLA preset using Florence-2-large and a deeper transformer.
 
@@ -464,8 +461,9 @@ def xvla(device: str = "cuda", pretrained: str | None = None, action_mode = 'ee6
     nn.Module
         Constructed XVLA model.
     """
+    encoder_name = use_local_vlm if use_local_vlm else "microsoft/Florence-2-large"
     model = XVLA(
-        encoder_name="microsoft/Florence-2-large",
+        encoder_name=encoder_name,
         
         depth=24,
         hidden_size=1024,

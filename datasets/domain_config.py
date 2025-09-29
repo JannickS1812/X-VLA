@@ -8,6 +8,7 @@ DATA_WEIGHTS = {
     "AGIBOT": 0.4,
     "robomind-agilex": 0.07,
     "robomind-franka-dual": 0.03,
+    
 }
 
 DATA_DOMAIN_ID = {
@@ -32,5 +33,5 @@ DATA_DOMAIN_ID = {
     "Droid-Right": 14,
     "AGIBOT": 15,
     "robomind-agilex": 16,
-    "robomind-franka-dual": 17,
+    "robomind-franka-dual": 17
 }
