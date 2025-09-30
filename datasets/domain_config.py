@@ -9,6 +9,18 @@ DATA_WEIGHTS = {
     "robomind-agilex": 0.07,
     "robomind-franka-dual": 0.03,
     
+    
+    # challenge
+    "agiworld-on-site-pack": 0.7,
+    "agiworld-on-site-pack-": 0.3,
+    
+    "agiworld-on-site-conveyor": 0.8,
+    "agiworld-on-site-conveyor-extra": 0.2,
+    
+    "agiworld-on-site-restock": 1.,
+    "agiworld-on-site-pour": 1.,
+    "agiworld-on-site-microwave": 1.2,
+    "agiworld-on-site-cloth": 1.,
 }
 
 DATA_DOMAIN_ID = {
@@ -37,7 +49,11 @@ DATA_DOMAIN_ID = {
     
     # challenge
     "agiworld-on-site-pack": 20,
+    "agiworld-on-site-pack-extra": 20,
+    
     "agiworld-on-site-conveyor": 21,
+    "agiworld-on-site-conveyor-extra": 26,
+    
     "agiworld-on-site-restock": 22,
     "agiworld-on-site-pour": 23,
     "agiworld-on-site-microwave": 24,

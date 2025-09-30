@@ -128,3 +128,56 @@ class JointLoss(nn.Module):
         }
 
 
+
+class AGIBOTJointLoss(nn.Module):
+    """
+    Joint-space layout with joints + gripper only.
+    Uses:
+      - joints (MSE) over all non-gripper channels
+      - gripper (BCE-with-logits) over two gripper indices
+    All hyperparameters/indices are hard-coded.
+    """
+
+    # ---- Hard-coded hyperparameters/indices ----
+    DIM_ACTION: int = 16  # Expected action dimension
+    GRIPPER_SCALE: float = 0.1
+    GRIPPER_IDX: Tuple[int, int] = (14, 15)
+    JOINTS_SCALE: float = 1.0
+
+    def __init__(self):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        self.bce = nn.BCEWithLogitsLoss()
+
+    def forward(self, pred_action: torch.Tensor, target_action: torch.Tensor):
+        assert pred_action.shape == target_action.shape, "pred/target shapes must match"
+        assert pred_action.dim() == 3, "expected [B, T, D]"
+        B, T, D = pred_action.shape  # noqa: F841
+
+        # Validate
+        _ensure_indices_valid(D, self.GRIPPER_IDX, "gripper_idx")
+
+        # Gripper BCE (average over both indices)
+        g_losses = [
+            self.bce(pred_action[:, :, gi], target_action[:, :, gi]) for gi in self.GRIPPER_IDX
+        ]
+        gripper_loss = sum(g_losses) / len(self.GRIPPER_IDX)
+        gripper_loss = gripper_loss * self.GRIPPER_SCALE
+
+        # Joints = all except grippers
+        grip_set = set(self.GRIPPER_IDX)
+        joints_idx = tuple(i for i in range(D) if i not in grip_set)
+        if len(joints_idx) == 0:
+            raise ValueError("No joint indices inferred (D equals number of gripper indices).")
+
+        joints_loss = self.mse(pred_action[:, :, joints_idx], target_action[:, :, joints_idx])
+        joints_loss = joints_loss * self.JOINTS_SCALE
+
+        total = joints_loss + gripper_loss
+        return {
+            "joints_loss": joints_loss,
+            "gripper_loss": gripper_loss,
+            "total_loss": total,
+        }
+
+

@@ -42,7 +42,10 @@ def get_args_parser():
     parser.add_argument('--batch-size', default=16, type=int)
     parser.add_argument('--learning_rate', default=1e-4, type=float)
     
-    
+    parser.add_argument('--drop_proprio', action='store_true', default=False)
+    parser.add_argument('--num_actions', default=30, type=int)
+    parser.add_argument('--action_mode', default='ee6d', type=str)
+    parser.add_argument('--rel_idx', default=[], type=int, nargs='+')
     
     parser.add_argument('--iters', default=1000000, type=int)
     parser.add_argument('--freeze_steps', default=1000, type=float)
@@ -82,7 +85,12 @@ def main(args):
                               project_dir=output_dir, kwargs_handlers=[kwargs])
     accelerator.init_trackers("HFP_Training")
     torch.distributed.barrier()
-    model = xvla(pretrained = args.pretrained, use_local_vlm = args.use_local_vlm)
+    model = xvla(pretrained = args.pretrained, 
+                 use_local_vlm = args.use_local_vlm,
+                 action_mode = args.action_mode,
+                 use_proprio = not args.drop_proprio,
+                 num_actions = args.num_actions)
+    
     text_processor = model.text_preprocessor
     
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad) / 1000 / 1000
@@ -91,7 +99,9 @@ def main(args):
         batch_size = args.batch_size,
         metas_path = args.train_metas_path,
         num_actions= model.num_actions,
-        training = True
+        training = True,
+        action_mode = args.action_mode,
+        rel_idx = args.rel_idx
     ))
     
     model = model.to(torch.float32)
@@ -180,8 +190,8 @@ def main(args):
             
             accelerator.wait_for_everyone()
             model.train()
-        
-    accelerator.save_model(model, os.path.join(output_dir, f"ckpt-final"), safe_serialization=True)
+    if accelerator.is_main_process:
+        accelerator.save_model(model, os.path.join(output_dir, f"ckpt-final"), safe_serialization=True)
     if args.eval_task != '':
         
         accelerator.print(f"final Start {args.eval_task} evaluation")

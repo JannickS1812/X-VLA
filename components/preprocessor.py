@@ -92,17 +92,30 @@ class ImagePreprocessor:
         Applies preprocessing to a batch of images.
     """
 
-    def __init__(self, num_views: int = 3):
+    def __init__(self, num_views: int = 3, version="v1"):
         self.num_views = num_views
-        self.image_transform = transforms.Compose([
-            transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=(0.485, 0.456, 0.406),
-                std=(0.229, 0.224, 0.225),
-                inplace=True,
-            ),
-        ])
+        if version == "v0":
+            self.image_transform = transforms.Compose([
+                transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=(0.485, 0.456, 0.406),
+                    std=(0.229, 0.224, 0.225),
+                    inplace=True,
+                ),
+            ])
+        elif version == "v1":
+            self.image_transform = transforms.Compose([
+                transforms.Resize((236, 236), interpolation=InterpolationMode.BICUBIC),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=(0.485, 0.456, 0.406),
+                    std=(0.229, 0.224, 0.225),
+                    inplace=True,
+                ),
+            ])
+        else: raise ValueError(f"Unknown image preprocessor version: {version}")
 
     def __call__(self, images):
         """

@@ -12,7 +12,7 @@ def read_bytes(path: str) -> bytes:
 
 def open_h5(path: str) -> h5py.File:
     try: return h5py.File(path, "r")
-    except OSError: return h5py.File(io.BytesIO(read_bytes), "r")
+    except OSError: return h5py.File(io.BytesIO(read_bytes(path)), "r")
 
 def read_video_to_frames(path: str) -> np.ndarray:
     buf = io.BytesIO(read_bytes(path)); container = av.open(buf)
@@ -34,11 +34,40 @@ def decode_image_from_bytes(x) -> Image.Image:
         elif rgb.size == 921600: rgb = rgb.reshape(480, 640, 3)
     return Image.fromarray(rgb)
 
-def quat_to_rotate6d(q: np.ndarray) -> np.ndarray:
-    return R.from_quat(q).as_matrix()[..., :, :2].reshape(q.shape[:-1] + (6,))
+def quat_to_rotate6d(q: np.ndarray, scalar_first = False) -> np.ndarray:
+    return R.from_quat(q, scalar_first = scalar_first).as_matrix()[..., :, :2].reshape(q.shape[:-1] + (6,))
 
 def euler_to_rotate6d(q: np.ndarray, pattern: str = "xyz") -> np.ndarray:
     return R.from_euler(pattern, q, degrees=False).as_matrix()[..., :, :2].reshape(q.shape[:-1] + (6,))
+
+
+def rotate6d_to_xyz(v6: np.ndarray) -> np.ndarray:
+    v6 = np.asarray(v6)
+    if v6.shape[-1] != 6:
+        raise ValueError("Last dimension must be 6 (got %s)" % (v6.shape[-1],))
+    a1 = v6[..., 0:5:2]
+    a2 = v6[..., 1:6:2]
+    b1 = a1 / np.linalg.norm(a1, axis=-1, keepdims=True)
+    proj = np.sum(b1 * a2, axis=-1, keepdims=True) * b1
+    b2 = a2 - proj
+    b2 = b2 / np.linalg.norm(b2, axis=-1, keepdims=True)
+    b3 = np.cross(b1, b2)
+    rot_mats = np.stack((b1, b2, b3), axis=-1)      # shape (..., 3, 3)
+    return R.from_matrix(rot_mats).as_euler('xyz')
+
+def rotate6d_to_quat(v6: np.ndarray, scalar_first = False) -> np.ndarray:
+    v6 = np.asarray(v6)
+    if v6.shape[-1] != 6:
+        raise ValueError("Last dimension must be 6 (got %s)" % (v6.shape[-1],))
+    a1 = v6[..., 0:5:2]
+    a2 = v6[..., 1:6:2]
+    b1 = a1 / np.linalg.norm(a1, axis=-1, keepdims=True)
+    proj = np.sum(b1 * a2, axis=-1, keepdims=True) * b1
+    b2 = a2 - proj
+    b2 = b2 / np.linalg.norm(b2, axis=-1, keepdims=True)
+    b3 = np.cross(b1, b2)
+    rot_mats = np.stack((b1, b2, b3), axis=-1)      # shape (..., 3, 3)
+    return R.from_matrix(rot_mats).as_quat(scalar_first = scalar_first)
 
 
 def action_slice(abs_traj: torch.Tensor, rel_idx: Sequence[int] = ()) -> Dict[str, torch.Tensor]:

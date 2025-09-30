@@ -5,6 +5,7 @@ from .base import DomainHandler
 
 # Handlers
 from .lerobot_agibot import AGIBOTLeRobotHandler
+from .agiworld import AGIWolrdHandler
 from .robomind import RobomindHandler
 from .droid import DroidHandler
 from .real_world import AIRAgilexHandler, AIRAgilexHQHandler, AIRBotHandler, WidowxAirHandler
@@ -43,6 +44,16 @@ _REGISTRY: Dict[str, Type[DomainHandler]] = {
     # Droid
     "Droid-Left": DroidHandler,
     "Droid-Right": DroidHandler,
+    
+    
+    "agiworld-on-site-pack": AGIWolrdHandler ,
+    "agiworld-on-site-pack-extra": AGIWolrdHandler ,
+    "agiworld-on-site-conveyor": AGIWolrdHandler ,
+    "agiworld-on-site-conveyor-extra": AGIWolrdHandler ,
+    "agiworld-on-site-restock": AGIWolrdHandler ,
+    "agiworld-on-site-pour": AGIWolrdHandler ,
+    "agiworld-on-site-microwave": AGIWolrdHandler ,
+    "agiworld-on-site-cloth": AGIWolrdHandler,
 }
 
 def get_handler_cls(dataset_name: str) -> Type[DomainHandler]:

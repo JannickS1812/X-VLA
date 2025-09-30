@@ -62,7 +62,9 @@ class AIRAgilexHQHandler(BaseHDF5Handler):
     def index_candidates(self, T_left: int, training: bool) -> Iterable[int]:
         index =  list(range(0, max(0, T_left - 30)))
         if training: random.shuffle(index)
-        return index[:400]
+        return index
+
+    
 
 
 class AIRBotHandler(BaseHDF5Handler):

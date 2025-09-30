@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Dict, Iterable, List
 import io, json, random, numpy as np, torch
-from torch.utils.data import IterableDataset, DataLoader, get_worker_info
+from torch.utils.data import IterableDataset
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 from mmengine import fileio
@@ -26,13 +26,18 @@ class InfiniteDataReader(IterableDataset):
                  num_actions: int = 10, 
                  num_views: int = 3, 
                  training: bool = True,
+                 action_mode: str = "ee6d",
+                 rel_idx: List[int] = [],
                  lang_aug: str = None,
                  ):
         self.num_views = num_views
         self.training = training
         self.num_actions = num_actions
-
+        self.action_mode = action_mode
+        self.rel_idx = rel_idx
         self.metas: Dict[str, dict] = {}
+        print("use action mode:", action_mode)
+        print("rel_idx:", rel_idx)
         if fileio.isdir(metas_path):
             meta_files = fileio.list_dir_or_file(metas_path, suffix=".json", recursive=True, list_dir=False)
             root = metas_path
@@ -43,11 +48,13 @@ class InfiniteDataReader(IterableDataset):
             self.metas[meta["dataset_name"]] = meta
 
         self.image_aug = [
-            transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC),
+            transforms.Resize((236, 236), interpolation=InterpolationMode.BICUBIC),
+            transforms.RandomCrop(224) if training else transforms.CenterCrop(224),
+            transforms.ColorJitter(brightness=0.4, contrast=0.2, saturation=0.2, hue=0.0) \
+                if training else transforms.Lambda(lambda x: x),
             transforms.ToTensor(),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), inplace=True),
         ]
-        if training: self.image_aug.insert(1, transforms.ColorJitter(brightness=0.4, contrast=0.2, saturation=0.2, hue=0.0))
         self.image_aug = transforms.Compose(self.image_aug)
         if lang_aug is not None: self.lang_aug = json.load(open(lang_aug, "r")) # support json or jsonl
         else: self.lang_aug = None
@@ -65,9 +72,10 @@ class InfiniteDataReader(IterableDataset):
                 training=self.training,
                 image_aug=self.image_aug,
                 lang_aug_map=self.lang_aug,
+                action_mode = self.action_mode
             ):
                 sample["domain_id"] = torch.tensor(DATA_DOMAIN_ID.get(dataset_name, 0))
-                rel_idx = meta.get("rel_idx", ())
+                rel_idx = meta.get("rel_idx", self.rel_idx)
                 sample.update(action_slice(sample["abs_trajectory"], rel_idx))
                 del sample["abs_trajectory"]
                 yield sample

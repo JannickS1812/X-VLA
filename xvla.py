@@ -23,6 +23,7 @@ import logging
 import traceback
 
 import numpy as np
+from regex import P
 import torch
 import torch.nn as nn
 from PIL import Image
@@ -33,12 +34,13 @@ from safetensors.torch import load_file
 
 from transformers import AutoModelForCausalLM
 from components.transformer import SoftPromptedTransformer
-from components.losses import EE6DLoss, JointLoss
+from components.losses import EE6DLoss, JointLoss, AGIBOTJointLoss
 from components.preprocessor import LanguagePreprocessor, ImagePreprocessor
 
 LOSS_HUB = {
     "ee6d": EE6DLoss,
     "joint": JointLoss,
+    "agibot_joint": AGIBOTJointLoss
 }
 
 
@@ -70,7 +72,9 @@ class XVLA(nn.Module):
         num_domains: int = 30,
         len_soft_prompts: int = 32,
         use_hetero_proj: bool = False,
-        action_mode: str = "ee6d"
+        action_mode: str = "ee6d",
+        use_proprio: bool = True,
+        version: str = "v1"
     ):
         """
         Parameters
@@ -93,16 +97,20 @@ class XVLA(nn.Module):
             Whether to use heterogeneous projection heads in the transformer.
         action_mode : {"ee6d","joint"}
             Layout for actions/proprio; controls channel dimensions and loss type.
+        use_proprio : bool
+            Whether to use proprio info.
         """
         super().__init__()
 
         action_mode = action_mode.lower()
-        assert action_mode in {"ee6d", "joint"}, "action_mode must be 'ee6d' or 'joint'"
+        assert action_mode in {"ee6d", "joint", "agibot_joint"}, "action_mode must be 'ee6d' or 'joint'"
 
         # Channel layout derived from mode
         self.criterion = LOSS_HUB[action_mode]()
         self.num_actions = num_actions
-
+        self.use_proprio = use_proprio
+        if not use_proprio: print(">>> disable proprioception <<<")
+        
         # Modules
         assert 'Florence' in encoder_name, "Only microsoft/Florence-2-base and microsoft/Florence-2-large are supported."
         self.vlm = AutoModelForCausalLM.from_pretrained(
@@ -138,10 +146,8 @@ class XVLA(nn.Module):
 
         # I/O preprocessors (implementations are project-specific)
         self.text_preprocessor = LanguagePreprocessor(encoder_name=encoder_name)
-        self.image_preprocessor = ImagePreprocessor()
-
+        self.image_preprocessor = ImagePreprocessor(version=version)
         self.app: FastAPI | None = None
-
 
     # ------------------------------ utilities -------------------------------
     def forward_vlm(
@@ -234,6 +240,7 @@ class XVLA(nn.Module):
         action_m = action.clone()
         proprio_m[..., idx] = 0.0
         action_m[..., idx] = 0.0
+        if not self.use_proprio: proprio_m = torch.zeros_like(proprio_m)
         return proprio_m, action_m
 
     # ------------------------------ training --------------------------------
@@ -341,11 +348,10 @@ class XVLA(nn.Module):
             action = self.transformer(
                 domain_id=domain_id,
                 action_with_noise=action_with_noise_m,
-                t=t,
                 proprio=proprio_m,
+                t=t,
                 **enc,
             )
-
         idx = self.criterion.GRIPPER_IDX
         action[..., idx] = torch.sigmoid(action[..., idx])
         return action
@@ -443,7 +449,14 @@ class XVLA(nn.Module):
         uvicorn.run(self.app, host=host, port=port)
 
 
-def xvla(device: str = "cuda", pretrained: str | None = None, action_mode = 'ee6d', use_local_vlm = None, **kwargs):
+def xvla(device: str = "cuda", 
+         num_actions = 30,
+         pretrained: str | None = None, 
+         action_mode = 'ee6d', 
+         use_local_vlm = None, 
+         use_proprio = True,
+         version = "v1",
+         **kwargs):
     """
     Factory for an XVLA preset using Florence-2-large and a deeper transformer.
 
@@ -468,12 +481,14 @@ def xvla(device: str = "cuda", pretrained: str | None = None, action_mode = 'ee6
         depth=24,
         hidden_size=1024,
         num_heads=16,
-        num_actions=30,
         num_domains=30,
         len_soft_prompts=32,
         use_hetero_proj=False,
         
+        num_actions=num_actions,
         action_mode=action_mode,
+        use_proprio=use_proprio,
+        version = version
     )
 
     if isinstance(pretrained, str):

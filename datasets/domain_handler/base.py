@@ -34,7 +34,9 @@ class DomainHandler(ABC):
         num_actions: int,
         training: bool,
         image_aug,
+        action_mode,
         lang_aug_map: dict | None,
+        **kwargs
     ) -> Iterable[dict]:
         """Yield samples for a single episode."""
         ...
@@ -96,7 +98,10 @@ class BaseHDF5Handler(DomainHandler):
         num_actions: int,
         training: bool,
         image_aug,
+        action_mode,
         lang_aug_map: dict | None,
+        use_gripper_trick:bool = False,
+        **kwargs
     ) -> Iterable[dict]:
         """Open once, yield many samples; file is always closed on exit."""
         datapath = self.meta["datalist"][traj_idx]
