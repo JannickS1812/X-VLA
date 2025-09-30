@@ -165,10 +165,10 @@ def main(args):
         if iters % args.save_interval == 0:
             model.eval()
             accelerator.wait_for_everyone()
-            accelerator.print("========start saving models=========")
-            accelerator.save_state(os.path.join(output_dir, f"ckpt-latest"), safe_serialization=True)
-            accelerator.save_model(model, os.path.join(output_dir, f"ckpt-{iters}"), safe_serialization=True)
-            
+            if accelerator.is_main_process:
+                accelerator.print("========start saving models=========")
+                accelerator.save_state(os.path.join(output_dir, f"ckpt-latest"), safe_serialization=True)
+                accelerator.save_model(model, os.path.join(output_dir, f"ckpt-{iters}"), safe_serialization=True)
             if args.eval_task != '':
                 accelerator.print(f"[Iter {iters}] Start {args.eval_task} evaluation")
                 if accelerator.is_main_process:

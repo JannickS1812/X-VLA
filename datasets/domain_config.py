@@ -33,5 +33,13 @@ DATA_DOMAIN_ID = {
     "Droid-Right": 14,
     "AGIBOT": 15,
     "robomind-agilex": 16,
-    "robomind-franka-dual": 17
+    "robomind-franka-dual": 17,
+    
+    # challenge
+    "agiworld-on-site-pack": 20,
+    "agiworld-on-site-conveyor": 21,
+    "agiworld-on-site-restock": 22,
+    "agiworld-on-site-pour": 23,
+    "agiworld-on-site-microwave": 24,
+    "agiworld-on-site-cloth": 25,
 }
