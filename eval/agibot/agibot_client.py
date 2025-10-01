@@ -10,27 +10,21 @@ from typing import Tuple, Union, Optional
 import argparse
 import collections
 import json_numpy
-from common import quat_to_rotate6d, rotate6d_to_quat
-
+from datasets.common import quat_to_rotate6d, rotate6d_to_quat
 # 从新机器人SDK导入
 from a2d_sdk.robot import RobotDds, RobotController, CosineCamera
-
 # --- 全局配置 ---
-# INFERENCE_SERVER_URL = "http://172.16.16.77:5002/infer"
-# INFERENCE_SERVER_URL = "http://172.16.16.33:8000/infer" 
-INFERENCE_SERVER_URL = "http://172.16.17.77:8000/infer" 
-LOG_IMAGE_DIR = "./Log_New"  # 保存周期性图像日志的文件夹
+LOG_IMAGE_DIR = "./Log"  # 保存周期性图像日志的文件夹
 
 CAMERA_MAPPING = {
     "cam_head": "head",
-    # "cam_high_fisheye": "head_center_fisheye",
     "cam_left_wrist": "hand_left",
     "cam_right_wrist": "hand_right",
 }
 
 TASK_INFOS = {
     0: {
-        'instruction': "Pack in the Supermarket",
+        'instruction': "Pick up the object and place it in the bag.",
         'arm_init': [
                     -1.098023772239685,
                     0.5286651849746704,
@@ -59,7 +53,7 @@ TASK_INFOS = {
                         0.43633763187764485],
     },
     1: {
-        'instruction': "Pack moving objects from conveyor",
+        'instruction': "Pick objects from the conveyor belt and place them in the box.",
         'arm_init': [
                     -1.1081970930099487,
                     0.5599356293678284,
@@ -90,7 +84,7 @@ TASK_INFOS = {
                     ],
     },
     2: {
-        'instruction': "Restock supermarket snacks (hang)",
+        'instruction': "Hang the snacks on the shelf.",
         'arm_init': [
                     -1.3661954402923584,
                     0.9899733662605286,
@@ -118,7 +112,7 @@ TASK_INFOS = {
                     ],
     },
     3: {
-        'instruction': "Pour water",
+        'instruction': "pour the water into the cup.",
         'arm_init': [
                     -1.0356225967407227,
                     0.5868958234786987,
@@ -146,7 +140,7 @@ TASK_INFOS = {
                     ],
     },
     4: {
-        'instruction': "Heat the food in the microwave",
+        'instruction': "Open the microwave, put the food in, and close the microwave.",
         'arm_init': [
                     -1.0744252374439445,
                     0.611131855103108,
@@ -177,7 +171,7 @@ TASK_INFOS = {
                     ],
     },
     5: {
-        'instruction': "Fold T-shirts",
+        'instruction': "fold the clothes",
         'arm_init': [
                     -1.0743615627288818,
                     0.610994279384613,
@@ -229,10 +223,8 @@ class ClientModel():
         return None
 
     def step(self, obs, proprio, instruction):
+        if self.proprio is None: self.proprio = to_flat_array(proprio)    
         if not self.action_plan:
-            if self.proprio is None:
-                self.proprio = to_flat_array(proprio)
-                    
             query = {
                 "proprio": json_numpy.dumps(self.proprio),
                 "language_instruction": instruction,
@@ -243,9 +235,9 @@ class ClientModel():
             response = requests.post(self.url, json=query)
             actions = np.array(response.json()['action'])[self.chunk_size]
             self.action_plan.extend(actions.tolist())
-            self.proprio = to_flat_array(proprio) if self.close_loop else actions[-1]
-    
+        
         action_predict = np.array(self.action_plan.popleft())
+        self.proprio = to_flat_array(proprio) if self.close_loop else action_predict
         action_predict = self.post_process(action_predict)
         return action_predict
     
@@ -284,6 +276,7 @@ def encode_image(img: np.ndarray) -> str:
     """将 OpenCV 图像编码为 base64 PNG 字符串。"""
     _, buffer = cv2.imencode('.png', img)
     return base64.b64encode(buffer).decode('utf-8')
+
 def clear_log_directory():
     """清空 LOG_IMAGE_DIR 文件夹中的所有文件"""
     if os.path.exists(LOG_IMAGE_DIR):
@@ -341,13 +334,6 @@ def main(args):
         print(f"📷 Init cameras: {camera_sdk_names}")
         camera = CosineCamera(camera_sdk_names)
         
-        # arm_initial_joint_position=[-1.63665295,  0.78416812,  0.61188424, -0.70639342,  1.04935575,
-        # 1.44077671,  0.72583276,  1.77511871, -0.99129957, -1.53809536,
-        # 0.63575584, -0.19526549, -1.14260852, -0.98163235]
-        
-        arm_initial_joint_position=[-1.075, 0.6108, 0.279, -1.284, 0.731, 1.495, -0.188,
-                                    1.075, -0.6108, -0.279, 1.284, -0.731, -1.495, 0.188] ##和数采位置对齐
-        
         robot_dds.reset(arm_positions=TASK_INFOS[args.task_id]['arm_init'],
                         gripper_positions=TASK_INFOS[args.task_id]['gripper_init'],
                         hand_positions=robot_dds.hand_initial_joint_position,
@@ -366,37 +352,43 @@ def main(args):
             
             # --- 2.1. 获取状态和图像 ---
             try:
-                # 获取手臂末端执行器位姿, 并整理为 "右+左" 顺序
+
                 motion_status = robot_controller.get_motion_status()
                 left_cartesian = motion_status["frames"]["arm_left_link7"]
                 right_cartesian = motion_status["frames"]["arm_right_link7"]
-                #a2d_sdk.gripper_states() 返回 ([左爪状态, 右爪状态], [时间戳]) 待确认 ? TBD
+                #a2d_sdk.gripper_states() 返回 ([左爪状态, 右爪状态], [时间戳]) 待确认 ? 已确认
                 gripper_states_raw, _ = robot_dds.gripper_states() 
                 left_gripper_state = gripper_states_raw[0]
                 right_gripper_state = gripper_states_raw[1]
-
-
-                left_6d = quat_to_rotate6d([left_cartesian["orientation"]["quaternion"]["x"], left_cartesian["orientation"]["quaternion"]["y"], left_cartesian["orientation"]["quaternion"]["z"], left_cartesian["orientation"]["quaternion"]["w"]])
-                right_6d = quat_to_rotate6d([right_cartesian["orientation"]["quaternion"]["x"], right_cartesian["orientation"]["quaternion"]["y"], right_cartesian["orientation"]["quaternion"]["z"], right_cartesian["orientation"]["quaternion"]["w"]])
-                # 16维: left xyz + left 6d + left gripper + right xyz + right 6d + right gripper
-                eef_pose_state = np.array([
-                    left_cartesian["position"]["x"], left_cartesian["position"]["y"],  left_cartesian["position"]["z"],
-                    left_6d[0], left_6d[1], left_6d[2], left_6d[3], left_6d[4], left_6d[5], left_gripper_state,
-                    right_cartesian["position"]["x"], right_cartesian["position"]["y"], right_cartesian["position"]["z"],
-                    right_6d[0], right_6d[1], right_6d[2], right_6d[3], right_6d[4], right_6d[5], right_gripper_state,
-                ])
+                left_6d = quat_to_rotate6d(np.array([left_cartesian["orientation"]["quaternion"]["x"], 
+                                            left_cartesian["orientation"]["quaternion"]["y"], 
+                                            left_cartesian["orientation"]["quaternion"]["z"], 
+                                            left_cartesian["orientation"]["quaternion"]["w"]]))
                 
-                # eef_pose_state = [
-                #     left_cartesian["position"]["x"], left_cartesian["position"]["y"],  left_cartesian["position"]["z"],
-                #     # left_cartesian["orientation"]["euler"]["roll"], left_cartesian["orientation"]["euler"]["pitch"],left_cartesian["orientation"]["euler"]["yaw"],left_gripper_state,
-                #     left_cartesian["orientation"]["quaternion"]["x"], left_cartesian["orientation"]["quaternion"]["y"], left_cartesian["orientation"]["quaternion"]["z"], left_cartesian["orientation"]["quaternion"]["w"],left_gripper_state,
-                #     right_cartesian["position"]["x"], right_cartesian["position"]["y"], right_cartesian["position"]["z"],
-                #     # right_cartesian["orientation"]["euler"]["roll"], right_cartesian["orientation"]["euler"]["pitch"],right_cartesian["orientation"]["euler"]["yaw"],right_gripper_state,
-                #     right_cartesian["orientation"]["quaternion"]["x"], right_cartesian["orientation"]["quaternion"]["y"],right_cartesian["orientation"]["quaternion"]["z"],right_cartesian["orientation"]["quaternion"]["w"],right_gripper_state,
-                # ]
+                right_6d = quat_to_rotate6d(np.array([right_cartesian["orientation"]["quaternion"]["x"], 
+                                             right_cartesian["orientation"]["quaternion"]["y"], 
+                                             right_cartesian["orientation"]["quaternion"]["z"], 
+                                             right_cartesian["orientation"]["quaternion"]["w"]]))
+                # 16维: left xyz + left 6d + left gripper + right xyz + right 6d + right gripper
+                eef_pose_state = np.concatenate([
+                    np.array([left_cartesian["position"]["x"], 
+                              left_cartesian["position"]["y"], 
+                              left_cartesian["position"]["z"]]),
+                    left_6d, 
+                    np.array([left_gripper_state]),
+                    np.array([right_cartesian["position"]["x"], 
+                            right_cartesian["position"]["y"], 
+                            right_cartesian["position"]["z"]]),
+                    right_6d, 
+                    np.array([right_gripper_state]),
+                ])
 
-                joint_pose_state = to_flat_array(robot_dds.arm_joint_states())
-                joint_pose_state = np.concatenate([joint_pose_state, to_flat_array(left_gripper_state), to_flat_array(right_gripper_state)]) # 7+7+1+1=16维
+                # print(robot_dds.arm_joint_states()[0].shape)
+                joint_pose_state = to_flat_array(robot_dds.arm_joint_states()[0])
+                # print('suc')
+                joint_pose_state = np.concatenate([joint_pose_state, 
+                                                   to_flat_array(left_gripper_state), 
+                                                   to_flat_array(right_gripper_state)]) # 7+7+1+1=16维
 
             except (KeyError, IndexError) as e:
                  print(f"❌ 获取机器人状态失败: {e}。跳过本轮循环。")
@@ -410,7 +402,7 @@ def main(args):
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             for server_name, sdk_name in CAMERA_MAPPING.items():
                 raw_img, encoded_img = get_and_encode_image(camera, sdk_name)
-                encoded_images[server_name] = encoded_img
+                encoded_images[server_name] = raw_img # we use raw image
                 if raw_img is not None:
                     print(f"✅ 已获取并编码图像: {server_name}")
                 else:
@@ -432,8 +424,20 @@ def main(args):
 
                 right_pose_array, left_pose_array = action[0:8], action[8:16]
                 gripper_states = [left_pose_array[7].item(), right_pose_array[7].item()]
-                right_pose_dict = { "x": right_pose_array[0].item(), "y": right_pose_array[1].item(), "z": right_pose_array[2].item(), "qx": right_pose_array[3].item(), "qy": right_pose_array[4].item(), "qz": right_pose_array[5].item(), "qw": right_pose_array[6].item() }
-                left_pose_dict = { "x": left_pose_array[0].item(), "y": left_pose_array[1].item(), "z": left_pose_array[2].item(), "qx": left_pose_array[3].item(), "qy": left_pose_array[4].item(), "qz": left_pose_array[5].item(), "qw": left_pose_array[6].item() }
+                right_pose_dict = { "x": right_pose_array[0].item(), 
+                                   "y": right_pose_array[1].item(), 
+                                   "z": right_pose_array[2].item(), 
+                                   "qx": right_pose_array[3].item(), 
+                                   "qy": right_pose_array[4].item(), 
+                                   "qz": right_pose_array[5].item(), 
+                                   "qw": right_pose_array[6].item()}
+                left_pose_dict = { "x": left_pose_array[0].item(), 
+                                  "y": left_pose_array[1].item(),
+                                  "z": left_pose_array[2].item(),
+                                  "qx": left_pose_array[3].item(),
+                                  "qy": left_pose_array[4].item(),
+                                  "qz": left_pose_array[5].item(),
+                                  "qw": left_pose_array[6].item() }
             
                 robot_controller.set_end_effector_pose_control(
                     lifetime=1.0,
@@ -443,19 +447,22 @@ def main(args):
                 )
                 robot_dds.move_gripper(gripper_states)
             elif "joint" in args.control_mode:
-                action = agent.step(encoded_images, joint_pose_state, args.instruction)
+                action = agent.step(encoded_images, joint_pose_state, current_instruction)
                 print(f"[Step {count}] with action: {action}")
                 if action.shape[0] != 16:
                     print(f"[!] 动作维度不正确 (应为16)，跳过此动作: {action}")
                     continue
                 right_joints = action[0:7]
                 left_joints = action[7:14]
-                robot_controller.set_joint_position_control( # check this function in A2D SDK
-                    lifetime=1.0,
-                    joint_group=["left_arm", "right_arm"],
-                    left_arm=left_joints.tolist(),
-                    right_arm=right_joints.tolist(),
-                )
+                gripper_states = [action[-2].item(), action[-1].item()]
+                # robot_controller.set_joint_position_control( # check this function in A2D SDK
+                #     lifetime=1.0,
+                #     joint_group={
+                #         "left_arm": left_joints.tolist(),
+                #         "right_arm": right_joints.tolist()
+                #     }
+                # )
+                robot_dds.move_gripper(gripper_states)
             else:
                 print(f"Unsupported control mode: {args.control_mode}")
                 break
@@ -482,7 +489,6 @@ if __name__ == "__main__":
     parser.add_argument("--control_mode", type=str, default="abs_eef", choices=["abs_eef", "delta_eef", "abs_joint", "delta_joint"], help="control mode")
     parser.add_argument("--chunk_size", type=int, default=20, help="number of actions to execute per inference")
     parser.add_argument("--close_loop", action="store_true", help="whether to run in closed-loop mode")
-    parser.add_argument("--instruction", type=str, default="Put all the fruits into the basket.", help="language instruction for the robot")
     parser.add_argument('--task_id', type=int, default=0, choices=[0,1,2,3,4,5], help='6 different tasks')
     parser.add_argument('--control_freq', type=int, default=30, help='control frequency (Hz)')
 
