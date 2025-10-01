@@ -36,16 +36,30 @@ DOMAIN2CHUNKSIZE = {
 }
 
 # Min chunk length around gripper-state changes
+# 0930 version
+# DOMAIN2MINCHUNK = {
+#     "agiworld-on-site-pack": 15,
+#     "agiworld-on-site-pack-extra": 15,
+#     "agiworld-on-site-conveyor": 10,
+#     "agiworld-on-site-conveyor-extra": 10,
+#     "agiworld-on-site-restock": 5,
+#     "agiworld-on-site-pour": 10,
+#     "agiworld-on-site-microwave": 15,
+#     "agiworld-on-site-cloth": 10,
+# }
+
+# 1001 version
 DOMAIN2MINCHUNK = {
-    "agiworld-on-site-pack": 15,
-    "agiworld-on-site-pack-extra": 15,
-    "agiworld-on-site-conveyor": 10,
-    "agiworld-on-site-conveyor-extra": 10,
-    "agiworld-on-site-restock": 5,
-    "agiworld-on-site-pour": 10,
-    "agiworld-on-site-microwave": 15,
-    "agiworld-on-site-cloth": 10,
+    "agiworld-on-site-pack": 30,
+    "agiworld-on-site-pack-extra": 30,
+    "agiworld-on-site-conveyor": 60,
+    "agiworld-on-site-conveyor-extra": 60,
+    "agiworld-on-site-restock": 15,
+    "agiworld-on-site-pour": 15,
+    "agiworld-on-site-microwave": 30,
+    "agiworld-on-site-cloth": 15,
 }
+
 
 class AGIWolrdHandler(DomainHandler):  # Note: "Wolrd" looks like a typo; kept for compatibility
     def read_action(self, item: str):

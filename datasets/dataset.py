@@ -66,20 +66,23 @@ class InfiniteDataReader(IterableDataset):
         Handler = get_handler_cls(dataset_name)
         handler = Handler(meta=meta, num_views=self.num_views)
         for traj_idx in traj_indices:
-            for sample in handler.iter_episode(
-                traj_idx,
-                num_actions=self.num_actions,
-                training=self.training,
-                image_aug=self.image_aug,
-                lang_aug_map=self.lang_aug,
-                action_mode = self.action_mode
-            ):
-                sample["domain_id"] = torch.tensor(DATA_DOMAIN_ID.get(dataset_name, 0))
-                rel_idx = meta.get("rel_idx", self.rel_idx)
-                sample.update(action_slice(sample["abs_trajectory"], rel_idx))
-                del sample["abs_trajectory"]
-                yield sample
-
+            try:
+                for sample in handler.iter_episode(
+                    traj_idx,
+                    num_actions=self.num_actions,
+                    training=self.training,
+                    image_aug=self.image_aug,
+                    lang_aug_map=self.lang_aug,
+                    action_mode = self.action_mode
+                ):
+                    sample["domain_id"] = torch.tensor(DATA_DOMAIN_ID.get(dataset_name, 0))
+                    rel_idx = meta.get("rel_idx", self.rel_idx)
+                    sample.update(action_slice(sample["abs_trajectory"], rel_idx))
+                    del sample["abs_trajectory"]
+                    yield sample
+            except:  # in case some h5 files are broken
+                print(f"!!! skip broken traj {meta['datalist'][traj_idx]}")
+                continue
         if self.training: yield from self._iter_one_dataset(dataset_name)
 
 

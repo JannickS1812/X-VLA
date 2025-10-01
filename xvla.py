@@ -494,7 +494,12 @@ def xvla(device: str = "cuda",
     if isinstance(pretrained, str):
         print(f">>>>>> load pretrain from {pretrained}")
         pretrained_ckpt = load_file(pretrained)
-        print(model.load_state_dict(pretrained_ckpt, strict=False))
+        new_ckpt = {}
+        for key, value in pretrained_ckpt.items():
+            if key in model.state_dict() and value.shape == model.state_dict()[key].shape: new_ckpt[key] = value
+            else:  print(f"skip loading {key}, shape not match")
+        
+        print(model.load_state_dict(new_ckpt, strict=False))
 
     if device:
         model = model.to(device)

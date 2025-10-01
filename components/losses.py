@@ -72,7 +72,7 @@ class EE6DLoss(nn.Module):
             "position_loss": position_loss,
             "rotate6D_loss": rotate6D_loss,
             "gripper_loss": gripper_loss,
-            "total_loss": total,
+            # "total_loss": total
         }
 
 
@@ -124,7 +124,7 @@ class JointLoss(nn.Module):
         return {
             "joints_loss": joints_loss,
             "gripper_loss": gripper_loss,
-            "total_loss": total,
+            # "total_loss": total,
         }
 
 
@@ -177,7 +177,7 @@ class AGIBOTJointLoss(nn.Module):
         return {
             "joints_loss": joints_loss,
             "gripper_loss": gripper_loss,
-            "total_loss": total,
+            # "total_loss": total,
         }
 
 

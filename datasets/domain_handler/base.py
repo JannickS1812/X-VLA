@@ -115,7 +115,7 @@ class BaseHDF5Handler(DomainHandler):
             ins = self.read_instruction(f)
             # Domain-specific kinematics and timing
             left, right, lt, rt, freq, qdur = self.build_left_right(f)
-
+        
         
         image_mask = torch.zeros(self.num_views, dtype=torch.bool)
         image_mask[: len(images)] = True
