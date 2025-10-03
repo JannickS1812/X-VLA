@@ -49,7 +49,7 @@ class AIRAgilexHQHandler(BaseHDF5Handler):
     def build_left_right(
         self, f: h5py.File
     ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray], float, float]:
-        freq, qdur = 30.0, 2.0
+        freq, qdur = 30.0, 3.0
         eef = f["observations"]["eef_6d"][()]  # [T,20]
         left, right = eef[:, :10], eef[:, 10:]
         left[:,  -1] = (left[:,  -1] * 50 < 1.0)
@@ -60,7 +60,7 @@ class AIRAgilexHQHandler(BaseHDF5Handler):
         return left, right, lt, rt, freq, qdur
 
     def index_candidates(self, T_left: int, training: bool) -> Iterable[int]:
-        index =  list(range(0, max(0, T_left - 30)))
+        index =  list(range(0, max(0, T_left - 60)))
         if training: random.shuffle(index)
         return index
 

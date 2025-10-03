@@ -24,16 +24,29 @@ DOMAIN2INS = {
 }
 
 # Max chunk length per domain
+# speed up version
 DOMAIN2CHUNKSIZE = {
-    "agiworld-on-site-pack": 60,
-    "agiworld-on-site-pack-extra": 60,
-    "agiworld-on-site-conveyor": 60,
-    "agiworld-on-site-conveyor-extra": 60,
-    "agiworld-on-site-restock": 60,
-    "agiworld-on-site-pour": 90,
-    "agiworld-on-site-microwave": 90,
-    "agiworld-on-site-cloth": 90,
+    "agiworld-on-site-pack": 120,
+    "agiworld-on-site-pack-extra": 120,
+    "agiworld-on-site-conveyor": 120,
+    "agiworld-on-site-conveyor-extra": 120,
+    "agiworld-on-site-restock": 120,
+    "agiworld-on-site-pour": 180,
+    "agiworld-on-site-microwave": 180,
+    "agiworld-on-site-cloth": 120
 }
+
+# 1002 version
+# DOMAIN2CHUNKSIZE = {
+#     "agiworld-on-site-pack": 90,
+#     "agiworld-on-site-pack-extra": 90,
+#     "agiworld-on-site-conveyor": 90,
+#     "agiworld-on-site-conveyor-extra": 90,
+#     "agiworld-on-site-restock": 90,
+#     "agiworld-on-site-pour": 120,
+#     "agiworld-on-site-microwave": 120,
+#     "agiworld-on-site-cloth": 90,
+# }
 
 # Min chunk length around gripper-state changes
 # 0930 version
@@ -50,14 +63,14 @@ DOMAIN2CHUNKSIZE = {
 
 # 1001 version
 DOMAIN2MINCHUNK = {
-    "agiworld-on-site-pack": 30,
-    "agiworld-on-site-pack-extra": 30,
+    "agiworld-on-site-pack": 60,
+    "agiworld-on-site-pack-extra": 60,
     "agiworld-on-site-conveyor": 60,
     "agiworld-on-site-conveyor-extra": 60,
-    "agiworld-on-site-restock": 15,
-    "agiworld-on-site-pour": 15,
-    "agiworld-on-site-microwave": 30,
-    "agiworld-on-site-cloth": 15,
+    "agiworld-on-site-restock": 60,
+    "agiworld-on-site-pour": 60,
+    "agiworld-on-site-microwave": 60,
+    "agiworld-on-site-cloth": 60,
 }
 
 
@@ -98,8 +111,8 @@ class AGIWolrdHandler(DomainHandler):  # Note: "Wolrd" looks like a typo; kept f
 
             # Build 6D rotations + XYZ + gripper for both arms
             abs_ee6d = np.concatenate([
-                xyz_position_left, quat_to_rotate6d(orientation_left, scalar_first=True), gripper_left[:, None],
-                xyz_position_right, quat_to_rotate6d(orientation_right, scalar_first=True), gripper_right[:, None]
+                xyz_position_left, quat_to_rotate6d(orientation_left), gripper_left[:, None],
+                xyz_position_right, quat_to_rotate6d(orientation_right), gripper_right[:, None]
             ], axis=-1)
 
         return abs_joint, abs_ee6d
@@ -134,20 +147,19 @@ class AGIWolrdHandler(DomainHandler):  # Note: "Wolrd" looks like a typo; kept f
             split_list.extend(split_data[current_ep_idx])
         split_list.append(len(abs_joint))
         # Drop very short segments
-        split_list = [(a, b) for a, b in zip(split_list[:-1], split_list[1:]) if b - a > 10]
+        split_list = [(a, b) for a, b in zip(split_list[:-1], split_list[1:])]
         random.shuffle(split_list)
 
         for traj_start_idx, traj_end_idx in split_list:
             # Candidate start indices; keep tail room
             index_list = list(range(traj_start_idx, 
                                         max(traj_start_idx, 
-                                        traj_end_idx - DOMAIN2MINCHUNK[self.meta['dataset_name']])))
+                                        traj_end_idx - 30)))
             random.shuffle(index_list)
 
             for idx in index_list:
                 # Skip near-static consecutive frames (by EE6D)
-                if np.abs(abs_ee6d[idx + 1] - abs_ee6d[idx]).max() < 5e-4:
-                    continue
+                if np.abs(abs_ee6d[idx + 1] - abs_ee6d[idx]).max() < 5e-4: continue
 
                 # Initial window upper bound
                 rel = min(DOMAIN2CHUNKSIZE[self.meta['dataset_name']] + 1,

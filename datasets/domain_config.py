@@ -19,7 +19,7 @@ DATA_WEIGHTS = {
     
     "agiworld-on-site-restock": 1.,
     "agiworld-on-site-pour": 1.,
-    "agiworld-on-site-microwave": 1.2,
+    "agiworld-on-site-microwave": 1.,
     "agiworld-on-site-cloth": 1.,
 }
 

@@ -50,7 +50,7 @@ class InfiniteDataReader(IterableDataset):
         self.image_aug = [
             transforms.Resize((236, 236), interpolation=InterpolationMode.BICUBIC),
             transforms.RandomCrop(224) if training else transforms.CenterCrop(224),
-            transforms.ColorJitter(brightness=0.4, contrast=0.2, saturation=0.2, hue=0.0) \
+            transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.0) \
                 if training else transforms.Lambda(lambda x: x),
             transforms.ToTensor(),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), inplace=True),
@@ -80,8 +80,9 @@ class InfiniteDataReader(IterableDataset):
                     sample.update(action_slice(sample["abs_trajectory"], rel_idx))
                     del sample["abs_trajectory"]
                     yield sample
-            except:  # in case some h5 files are broken
-                print(f"!!! skip broken traj {meta['datalist'][traj_idx]}")
+            except Exception as e:
+                with open("error_log.txt", "a") as f: f.write(f"skip broken traj {meta['datalist'][traj_idx]} with {e}\n")
+                # print(f"!!! skip broken traj {meta['datalist'][traj_idx]} with {e}")
                 continue
         if self.training: yield from self._iter_one_dataset(dataset_name)
 
