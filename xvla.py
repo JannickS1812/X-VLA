@@ -16,11 +16,8 @@
 
 from __future__ import annotations
 from json import encoder
-<<<<<<< HEAD
 import random
-=======
 import time
->>>>>>> c322bf54587969bc1bd9213cf862f80e79fe626f
 from typing import Any, Dict, Tuple
 
 import logging
@@ -364,12 +361,7 @@ class XVLA(nn.Module):
                 **enc,
             )
         idx = self.criterion.GRIPPER_IDX
-<<<<<<< HEAD
         if self.action_mode != "agibot_ee6d": action[..., idx] = torch.sigmoid(action[..., idx])
-=======
-        action[..., idx] = torch.sigmoid(action[..., idx])
-        print("infer time:", time.time() - start_time)
->>>>>>> c322bf54587969bc1bd9213cf862f80e79fe626f
         return action
 
     # ------------------------------ minimal service -------------------------
@@ -507,13 +499,8 @@ def build_xvla(device: str = "cuda",
         num_actions=num_actions,
         action_mode=action_mode,
         use_proprio=use_proprio,
-<<<<<<< HEAD
-        version=version
-    )
-=======
         version = version
     ).to(torch.float32)
->>>>>>> c322bf54587969bc1bd9213cf862f80e79fe626f
 
     if isinstance(pretrained, str):
         print(f">>>>>> load pretrain from {pretrained}")
