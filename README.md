@@ -2,6 +2,8 @@
 
 # 🤖 X-VLA: Cross-Embodiment Vision-Language-Action Transformer
 
+🏅Champion @ AgiBot World Challenge @ IROS 2025
+
 ## Soft-Prompted Transformer as a Scalable Cross-Embodiment Vision-Language-Action Model
 
 The **X-VLA** (Cross-Embodiment Vision-Language-Action) model introduces a unified **soft-prompted Transformer** architecture that achieves **scalable and generalizable control** across heterogeneous robotic embodiments.  
