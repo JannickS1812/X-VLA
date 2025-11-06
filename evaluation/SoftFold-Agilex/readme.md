@@ -17,11 +17,11 @@ pip install numpy==1.24.4
 ```
 
 
-Additionally, you should to change few lines to modify the urdf5 path to the one in our directory, since we manually solve the IK to avoid some bugs in original Agilex platform
+Additionally, you should to change few lines to modify the urdf path to the one in our directory, since we manually solve the IK to avoid some bugs in original Agilex platform
 
 1. open `~/X-VLA/evaluation/SoftFold-Agilex/Piper_ros_private-ros-noetic/src/piper/scripts/piper_start_ms_node.py`
 
-2. change the path in `os.path.join("PATH)` at line 53 to the path of the file `evaluation/SoftFold-Agilex/Piper_ros_private-ros-noetic/src/piper_description/urdf/piper_description.urdf` contained in our repo.
+2. change the path in `os.path.join("PATH")` at line 53 to the path of the file `evaluation/SoftFold-Agilex/Piper_ros_private-ros-noetic/src/piper_description/urdf/piper_description.urdf` contained in our repo.
 
 ---
 
@@ -51,16 +51,17 @@ model.run(processor, host="0.0.0.0", port=8000)
 ### 3️⃣ Run Client Evaluation
 
 ```bash
-cd SoftFold-Agilex/Piper_ros_private-ros-noetic
+cd X-VLA/evaluation/SoftFold-Agilex/Piper_ros_private-ros-noetic
 
 bash can_config.sh  # rename can
 roslaunch astra_camera multi_camera.launch # launch the camera nodes
 
 # start a new terminal
+cd X-VLA/evaluation/SoftFold-Agilex/Piper_ros_private-ros-noetic
 roslaunch piper start_ms_piper.launch mode:=1 auto_enable:=true  # launch the robot arm nodes
 
 # start a new terminal
-cd X-VLA/SoftFold-Agilex
+cd X-VLA/evaluation/SoftFold-Agilex
 python deploy/client_eef6d_xvla.py --host 0.0.0.0 --port 8000 --publish_rate 15 # 🌟 Run the evaluation script
 ```
 
