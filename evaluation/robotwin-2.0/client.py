@@ -1,11 +1,13 @@
 import sys
-sys.path.append("./")
-sys.path.append(f"./policy")
-sys.path.append("./description/utils")
-# Add the root directory (RoboTwin/) to sys.path
 from pathlib import Path
-root_dir = Path(__file__).resolve().parent.parent.parent  # Adjust based on actual structure
-sys.path.append(str(root_dir))
+# Add the absolute path of RoboTwin
+robowin_root = Path("/home/dodo/fyc/RoboTwin")
+# Ensure RoboTwin root is the first search in order to use envs
+if str(robowin_root) not in sys.path:
+    sys.path.insert(0, str(robowin_root))
+# Ensure CWD is RoboTwin in order to load assets
+import os
+os.chdir(robowin_root)
 
 import argparse
 import collections
@@ -27,11 +29,9 @@ import imageio
 import cv2
 import sys
 import numpy as np
-from generate_episode_instructions import *
 from scipy.spatial.transform import Rotation as R
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
-# os.chdir(os.path.join(os.getcwd(), 'eval/robotwin/RoboTwin'))
 logger = logging.getLogger(__name__)
 torch.set_default_dtype(torch.float32)
 
@@ -63,10 +63,11 @@ ALL_TASKS = [
     "stack_bowls_two", "stamp_seal", "turn_switch"
 ]
 
-print("len(ALL_TASKS)", len(ALL_TASKS))
+print("Number of tasks evaluating:", len(ALL_TASKS))
 
 def quat_to_rotate6D(q: np.ndarray) -> np.ndarray:
     return R.from_quat(q).as_matrix()[..., :, :2].reshape(q.shape[:-1] + (6,))
+
 
 def rotate6D_to_quat(v6: np.ndarray) -> np.ndarray:
     v6 = np.asarray(v6)
@@ -93,26 +94,6 @@ def decode_image_from_bytes(camera_rgb_image):
             rgb = rgb.reshape(480, 640, 3)
     return Image.fromarray(rgb)
 
-def save_results(path, task_name, rewards, video_records):
-    video_path = os.path.join(path, f"{task_name}")
-    json_path = os.path.join(path, 'results.json')
-    # save metrics
-    os.makedirs(path, exist_ok=True)
-    metrics = {f"sim/{task_name}": rewards}
-    with open(json_path, 'a+') as f:
-        line = json.dumps(metrics)
-        f.write(line+'\n')
-    # save videos
-    os.makedirs(video_path, exist_ok=True)
-    for k,v in video_records.items():
-        B, H, W, C = v.shape
-        video_save_path = os.path.join(video_path, f"{k}.mp4")
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  
-        out = cv2.VideoWriter(video_save_path, fourcc, 25, (W, H))
-        for frame in v:
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            out.write(frame_bgr)
-        out.release()
 
 class ClientModel:
     def __init__(self, host, port):
@@ -149,7 +130,8 @@ class ClientModel:
         ], axis=-1)
         self.vision_record.append(image_obs)
         query = {
-                "abs_eef": json_numpy.dumps(abs_eef.squeeze(0)), #.reshape(1,-1),  # (1, 14)
+                "domain_id": 6,
+                "proprio": json_numpy.dumps(abs_eef.squeeze(0)), # (1, 14)
                 "language_instruction": self.instruction,
                 "image0": json_numpy.dumps(head_view),
                 "image1": json_numpy.dumps(left_view),
@@ -225,67 +207,6 @@ def load_env(task_name, task_config):
 
     return task, args
 
-def init_env(task_name):
-    """_summary_
-    initialize your env given a specific task name
-    """
-    with open(f'./conf/task_config/{task_name}.yml', 'r', encoding='utf-8') as f:
-        args = yaml.load(f.read(), Loader=yaml.FullLoader)
-    
-    head_camera_config = get_camera_config(args['head_camera_type'])
-    args['head_camera_fovy'] = head_camera_config['fovy']
-    args['head_camera_w'] = head_camera_config['w']
-    args['head_camera_h'] = head_camera_config['h']
-    head_camera_config = 'fovy' + str(args['head_camera_fovy']) + '_w' + str(args['head_camera_w']) + '_h' + str(args['head_camera_h'])
-    
-    wrist_camera_config = get_camera_config(args['wrist_camera_type'])
-    args['wrist_camera_fovy'] = wrist_camera_config['fovy']
-    args['wrist_camera_w'] = wrist_camera_config['w']
-    args['wrist_camera_h'] = wrist_camera_config['h']
-    wrist_camera_config = 'fovy' + str(args['wrist_camera_fovy']) + '_w' + str(args['wrist_camera_w']) + '_h' + str(args['wrist_camera_h'])
-
-    front_camera_config = get_camera_config(args['front_camera_type'])
-    args['front_camera_fovy'] = front_camera_config['fovy']
-    args['front_camera_w'] = front_camera_config['w']
-    args['front_camera_h'] = front_camera_config['h']
-    front_camera_config = 'fovy' + str(args['front_camera_fovy']) + '_w' + str(args['front_camera_w']) + '_h' + str(args['front_camera_h'])
-
-    # output camera config
-    print('============= Camera Config =============')
-    print('Head Camera Config:\n    type: '+ str(args['head_camera_type']) + '       fovy: ' + str(args['head_camera_fovy']) + '\n    camera_w: ' + str(args['head_camera_w']) + '    camera_h: ' + str(args['head_camera_h']))
-    print('Wrist Camera Config:\n    type: '+ str(args['wrist_camera_type']) + '       fovy: ' + str(args['wrist_camera_fovy']) + '\n    camera_w: ' + str(args['wrist_camera_w']) + '    camera_h: ' + str(args['wrist_camera_h']))
-    print('Front Camera Config:\n    type: '+ str(args['front_camera_type']) + '       fovy: ' + str(args['front_camera_fovy']) + '\n    camera_w: ' + str(args['front_camera_w']) + '    camera_h: ' + str(args['front_camera_h']))
-    print('=======================================')
-    
-    env = class_decorator(args['task_name'])
-
-    return env, args
-
-def build_instruction_lib(task_name):
-    ins_lib_path = f"./conf/instructions/{task_name}.json"
-    assert os.path.isfile(ins_lib_path), f"Instruction file of {task_name} is missing"
-    ins_lib = json.load(open(ins_lib_path, 'r'))["instructions"]
-    return ins_lib
-
-
-def interpolate_gripper(gripper, new_steps):
-    n = gripper.shape[0]  # original step
-    x_old = np.linspace(0, 1, n)  # original data
-    x_new = np.linspace(0, 1, new_steps)  # target data number
-    
-    # use numpy.interp to linear interpolate
-    gripper_interp = np.interp(x_new, x_old, gripper.flatten()).reshape(-1)
-    return gripper_interp
-
-#### debug functions ####
-# 设置打印选项（全局生效）
-np.set_printoptions(
-    precision=4,      # 保留4位小数
-    suppress=True,    # 禁用科学计数法
-    linewidth=120     # 每行最大宽度
-)
-
-#########################
 
 def _rollout(env, policy):
     success_flag = False
@@ -293,40 +214,34 @@ def _rollout(env, policy):
     env._update_render()
     if env.render_freq: env.viewer.render()
     env.actor_pose = True
-
     images = []
     idx = 0
     obs = env.get_obs() # get observation
-    current_state = None
-    for j in range(10): #env.step_lim: # If it is not successful within the specified number of steps, it is judged as a failure.
+    # If it is not successful within the specified number of steps (here, 10 steps), it is judged as a failure.‘
+    for j in range(10):
         actions = policy.step(obs)
-
         left_xyz = actions[:, :3]  # (B, 3)
         left_rotate6d = actions[:, 3:9]  # (B, 6)
         left_gripper = actions[:, 9:10]  # (B, 1)  # Use 9:10 to keep 2D shape
-
         # Convert 6D rotation to quaternion (4 elements)
         left_quat = rotate6D_to_quat(left_rotate6d)  # Should return (B, 4)
         left_grip = 1 - 2 * (left_gripper > 0.7)
         # Ensure all have shape (B, features) and concatenate along axis 1
         left_new = np.concatenate([left_xyz, left_quat, left_grip], axis=1)  # (B, 3+4+1) = (B, 8)
-
         # Do the same for right arm
         right_xyz = actions[:, 10:13].reshape(-1, 3)  # (B, 3)
         right_rotate6d = actions[:, 13:19].reshape(-1, 6)  # (B, 6)
         right_quat = rotate6D_to_quat(right_rotate6d)  # (B, 4)
         right_gripper = actions[:, 19:20].reshape(-1, 1)  # (B, 1)
-        # 还原夹爪值的原始状态
+        # reset model gripper output
         right_grip = 1 - 2 * (right_gripper > 0.7)
         right_new = np.concatenate([right_xyz, right_quat, right_grip], axis=1)  # (B, 8)
-
         # Final rollout action (16 dimensions total)
         rollout_action = np.concatenate([left_new, right_new], axis=1)  # (B, 16)
         for action in tqdm(rollout_action):
             env.take_action(action, action_type='ee')  # target_pose: np.array([x, y, z, qx, qy, qz, qw])
             obs = env.get_obs()
             obs['endpose']['left_endpose'] = list(action[:7].reshape(7,))
-            # print(action[:8].shape)
             obs['endpose']['right_endpose'] = list(action[8:-1].reshape(7,))
             images.append(obs["observation"]["head_camera"]["rgb"] )
             idx += 1
@@ -349,11 +264,12 @@ def _rollout(env, policy):
         if env.actor_pose == False:
             print('false actor_pose2')
             break
-        # current_state = obs
+        
         j += 1
         env._update_render()
     print("\nfail!")
     return 0, images
+
 
 def eval_episodes(task_name, task_config, policy, test_num=10, seed=0, eval_log_dir=None, instruction_type=None):
     """
@@ -363,13 +279,10 @@ def eval_episodes(task_name, task_config, policy, test_num=10, seed=0, eval_log_
         print('save to', os.path.join(eval_log_dir, task_name))
         os.makedirs(os.path.join(eval_log_dir, task_name))
     
-    # env, args = init_env(task_name)
     TASK_ENV, args = load_env(task_name, task_config)
 
-    # ins_lib = build_instruction_lib(task_name)
     st_seed = 2000 * (1 + seed)
-    suc_nums = []
-    topk = 1
+
     expert_check = True
     TASK_ENV.suc = 0
     TASK_ENV.test_num = 0
@@ -377,7 +290,6 @@ def eval_episodes(task_name, task_config, policy, test_num=10, seed=0, eval_log_
     succ_seed = 0
     suc_test_seed_list = []
     now_seed = st_seed
-    task_total_reward = 0
     clear_cache_freq = args["clear_cache_freq"]
     args['policy_name'] = 'V4'
 
@@ -412,11 +324,7 @@ def eval_episodes(task_name, task_config, policy, test_num=10, seed=0, eval_log_
         args["render_freq"] = render_freq
 
         TASK_ENV.setup_demo(now_ep_num=now_id, seed=now_seed, is_test=True, **args)
-        # generate language instructions
-        # episode_info_list = [episode_info["info"]]
-        # results = generate_episode_descriptions(args["task_name"], episode_info_list, test_num)
-        # instruction = np.random.choice(results[0][instruction_type])
-        instruction = args["task_name"].replace('_', ' ') # use task name as instruction instead
+        instruction = args["task_name"].replace('_', ' ') # use task name as instruction
         print('instruction:', instruction)
         policy.set_instruction(instruction=instruction)  # set language instruction
         
@@ -435,14 +343,12 @@ def eval_episodes(task_name, task_config, policy, test_num=10, seed=0, eval_log_
         _log_results(metrics, save_path)
         now_id += 1
         TASK_ENV.close_env(clear_cache=((succ_seed + 1) % clear_cache_freq == 0))
-        # print('TASK_ENV.render_freq', TASK_ENV.render_freq)
         if TASK_ENV.render_freq:
             TASK_ENV.viewer.close()
 
         TASK_ENV.test_num += 1
 
         print(f"Success rate: {round(TASK_ENV.suc/TASK_ENV.test_num*100, 1)}%")
-        # TASK_ENV._take_picture()
         now_seed += 1
         try:
             point = round(TASK_ENV.suc/TASK_ENV.test_num*100, 1)
@@ -455,13 +361,13 @@ def eval_episodes(task_name, task_config, policy, test_num=10, seed=0, eval_log_
 
     return now_seed, TASK_ENV.suc
 
+
 def save_video(output_path, frames, fps=30):
     print('saving video to ', output_path)
     imageio.mimsave(output_path, frames, fps=fps) 
 
 
 def _log_results(metrics, log_path):
-    # print(metrics)
     with open(log_path, 'a+') as f:
         line = json.dumps(metrics)
         f.write(line+'\n')
@@ -475,11 +381,8 @@ def main():
     parser.add_argument("--device", default=0, type=int, help="CUDA device")
     parser.add_argument("--num_episodes", default=1000, type=int)
     parser.add_argument("--seed", default=0, type=int)
-
-    # args = parser.parse_args()
     parser.add_argument("--task_name", type=str, required=True, help="Name of the task (envs.<task>)")
     parser.add_argument("--task_config", type=str, required=True, help="Task config name (without .yml)")
-    # parser.add_argument("--hdf5_path", type=str, required=True, help="Path to replay HDF5 file")
     parser.add_argument("--output_path", type=str, required=True, help="Where to save the output video")
     parser.add_argument("--instruction_type", type=str, required=False, help="Where to save the output video")
     args = parser.parse_args()
