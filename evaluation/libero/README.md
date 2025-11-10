@@ -51,8 +51,6 @@ python libero_client.py \
 
 ## 📊 Results
 
-## 📊 Results
-
 |       |Spatial|Object|Goal|Long|Avg|
 | :--------------------: | :--: | :--: | :--: | :--: | :--: | 
 |     **Success (%)**    | 98.2 | 98.6 | 97.8 | 97.6 | 98.1 |
