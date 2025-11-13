@@ -151,7 +151,7 @@ try:
     print(f"✅ Received {actions.shape[0]} predicted actions.")
 except Exception as e:
     print(f"⚠️ Request failed: {e}")
-    actions = np.zeros((10, 20), dtype=np.float32)
+    actions = np.zeros((30, 20), dtype=np.float32)
 ```
 
 #### Expected Output
@@ -160,7 +160,7 @@ except Exception as e:
 [Server] Model loaded successfully on cuda:0
 [Server] Listening on 0.0.0.0:8000
 [Client] Sending observation to server...
-✅ Received 10 predicted actions.
+✅ Received 30 predicted actions.
 ```
 
 ---
