@@ -55,6 +55,8 @@ This design avoids package conflicts and supports distributed inference across G
 
 - [x] For questions about converting relative actions to absolute actions and our implementation, please first refer to issue [#2](https://github.com/2toinf/X-VLA/issues/2) and [#15](https://github.com/2toinf/X-VLA/issues/15). We have updated our [implementation](https://github.com/2toinf/X-VLA/blob/main/evaluation/libero/rel2abs.py) for retrieving absolute EEF actions.
 
+#### 🔥 Update: We have released the LoRA fine-tuning code, along with checkpoints and the associated inference code.
+
 | Model ID                                                                                           | Embodiment        | Description                                                                                     |   Performance   | Evaluation Guidance |
 | :------------------------------------------------------------------------------------------------- | :---------------- | :---------------------------------------------------------------------------------------------- | :--------------: | :-----------------: |
 | [`2toINF/X-VLA-Pt`](https://huggingface.co/2toINF/X-VLA-Pt)                                        | Foundation        | Pretrained on large-scale heterogeneous robot–vision–language datasets for general transfer.     | —                | —                   |
@@ -64,8 +66,14 @@ This design avoids package conflicts and supports distributed inference across G
 | [`2toINF/X-VLA-Libero`](https://huggingface.co/2toINF/X-VLA-Libero)                                | Franka            | Fine-tuned on LIBERO benchmark                     | **98.1%**        | [LIBERO Eval](evaluation/libero/README.md)         |
 | [`2toINF/X-VLA-VLABench`](https://huggingface.co/2toINF/X-VLA-VLABench)                                | Franka            | Fine-tuned on VLABench benchmark                     | **51.1(score)**        | to be update         |
 | [`2toINF/X-VLA-RoboTwin2`](https://huggingface.co/2toINF/X-VLA-RoboTwin2)                          | Agilex        | Trained on RoboTwin2 dataset for dual-arm coordinated manipulation(50 demos for each task).                     | **70%**        |   [RoboTwin2.0 Eval](evaluation/robotwin-2.0/README.md)    |
-| [`2toINF/X-VLA-Simpler-WidowX`](https://huggingface.co/2toINF/X-VLA-WidowX)                | WidowX  | Fine-tuned on BridgeDataV2 (Simpler benchmark).                                                  | **95.8%**        | [Simpler Eval](evaluation/simpler/README.md) |
+| [`2toINF/X-VLA-WidowX`](https://huggingface.co/2toINF/X-VLA-WidowX)                | WidowX  | Fine-tuned on BridgeDataV2 (Simpler benchmark).                                                  | **95.8%**        | [Simpler Eval](evaluation/simpler/README.md) |
 | [`2toINF/X-VLA-SoftFold`](https://huggingface.co/2toINF/X-VLA-SoftFold)                            | Agilex          | Fine-tuned on Soft-Fold Dataset. Specialized in deformable object manipulation (e.g., folding and cloth control).                 | cloth folding with a 100% success rate in 2 hours.  |  [SoftFold-Agilex](evaluation/SoftFold-Agilex/readme.md)   |
+| LoRA Adapters | ||  | |
+| [`2toINF/X-VLA-libero-spatial-peft`](https://huggingface.co/2toINF/X-VLA-libero-spatial-peft)                                | Franka            | Fine-tuned on LIBERO benchmark                     | **96.2%**        | [LIBERO Eval](evaluation/libero/README.md)         |
+| [`2toINF/X-VLA-libero-object-peft`](https://huggingface.co/2toINF/X-VLA-libero-object-peft)                                | Franka            | Fine-tuned on LIBERO benchmark                     | **96%**        | [LIBERO Eval](evaluation/libero/README.md)         |
+| [`2toINF/X-VLA-libero-goal-peft`](https://huggingface.co/2toINF/X-VLA-libero-goal-peft)                                | Franka            | Fine-tuned on LIBERO benchmark                     | **94.4%**        | [LIBERO Eval](evaluation/libero/README.md)         |
+| [`2toINF/X-VLA-libero-long-peft`](https://huggingface.co/2toINF/X-VLA-libero-long-peft)                                | Franka            | Fine-tuned on LIBERO benchmark                     | **83.2%**        | [LIBERO Eval](evaluation/libero/README.md)         |
+| [`2toINF/X-VLA-simpler-widowx-peft`](https://huggingface.co/2toINF/X-VLA-simpler-widowx-peft)                | WidowX  | Fine-tuned on BridgeDataV2 (Simpler benchmark).                                                  | **66.7%**        | [Simpler Eval](evaluation/simpler/README.md) |
 
 ---
 
