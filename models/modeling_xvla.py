@@ -206,7 +206,7 @@ class XVLA(PreTrainedModel):
                 t=t,
                 **enc,
             )
-        return self.action_space.postprocess(action)
+        return self.action_space.postprocess(action), enc
 
     # =============================== FastAPI service =============================
     def _build_app(self, processor):
@@ -269,8 +269,20 @@ class XVLA(PreTrainedModel):
 
                 # Inference
                 steps = int(payload.get("steps", 10))
-                action = self.generate_actions(**inputs, steps=steps).squeeze(0).float().cpu().numpy()
-                return JSONResponse({"action": action.tolist()})
+                action_tensor, enc = self.generate_actions(**inputs, steps=steps)
+
+                # Extract the VLM embedding (last token of the sequence)
+                vlm_features = enc["vlm_features"]  # Shape: [B, Seq, Dim]
+                # We take the embedding of the last token as the state representation
+                vlm_embedding_tensor = vlm_features[:, -1, :] # Shape: [B, Dim]
+
+                # Format for JSON response
+                action = action_tensor.squeeze(0).float().cpu().numpy()
+                embedding = vlm_embedding_tensor.squeeze(0).float().cpu().numpy()
+
+                return JSONResponse({"action": action.tolist(), "embedding": embedding.tolist()})
+
+
 
             except Exception:
                 logging.error(traceback.format_exc())
