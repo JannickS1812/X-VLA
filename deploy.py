@@ -19,13 +19,14 @@ import os
 import os.path as osp
 import json
 import torch
+import time
 from models.modeling_xvla import XVLA
 from models.processing_xvla import XVLAProcessor
 import sys
 
 def main():
     parser = argparse.ArgumentParser(description="Launch XVLA inference FastAPI server")
-    parser.add_argument("--model_path", type=str, required=True,
+    parser.add_argument("--model_path", type=str, default="2toINF/X-VLA-WidowX",
                         help="Path to the pretrained XVLA model directory")
     parser.add_argument('--processor_path', type=str, default=None)
     parser.add_argument('--LoRA_path', type=str, default=None)

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # ------------------------------------------------------------------------------
 # Copyright 2025 2toINF (https://github.com/2toINF)
 #
@@ -18,12 +20,15 @@ from __future__ import annotations
 
 import logging
 import traceback
-from typing import Any, Dict
+import time
+from typing import Any, Dict, List
+import logging
 
 import numpy as np
 import torch
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from PIL import Image
 import uvicorn
 import json_numpy
@@ -35,15 +40,35 @@ from .transformer import SoftPromptedTransformer
 from .action_hub import build_action_space
 from .configuration_xvla import XVLAConfig
 
+# --- Setup basic logging ---
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+
+# --- New Pydantic Models for Batched Request ---
+
+class SingleActPayload(BaseModel):
+    """Pydantic model for a single request payload."""
+    proprio: str  # json_numpy dump
+    language_instruction: str
+    image0: str   # json_numpy dump
+    image1: str | None = None
+    image2: str | None = None
+    domain_id: int
+    steps: int = 10
+    skip_action_generation: bool = False
+
+class BatchActResponse(BaseModel):
+    """Pydantic model for a single item in the batched response."""
+    action: list
+    embedding: list
+
+# --- End New Pydantic Models ---
+
 
 class XVLA(PreTrainedModel):
     """
     XVLA: HuggingFace-compatible Vision-Language-Action policy.
-
-    Components:
-      • Florence2 encoder-only backbone (vision-language)
-      • SoftPromptedTransformer (temporal/action head)
-      • Action space (pre/post-processing + loss)
+    ... (rest of the class is identical to xvla_model.py) ...
     """
     config_class = XVLAConfig
     base_model_prefix = "xvla"
@@ -180,13 +205,20 @@ class XVLA(PreTrainedModel):
         domain_id: torch.LongTensor,
         proprio: torch.Tensor,
         steps: int = 10,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         Iterative denoising (linear schedule).
         Applies action_space.postprocess at the end (e.g., sigmoid on gripper).
         """
         self.eval()
+        
+        # Determine if we need to synchronize (only for CUDA devices)
+        is_cuda = proprio.is_cuda 
+            
+        t_vlm_start = time.perf_counter()
         enc = self.forward_vlm(input_ids, image_input, image_mask)
+        log.info(f"  VLM Encode Time: {(time.perf_counter() - t_vlm_start) * 1000:.2f} ms")
+
 
         B = input_ids.shape[0]
         D = self.action_space.dim_action
@@ -195,10 +227,17 @@ class XVLA(PreTrainedModel):
         action = torch.zeros_like(x1)
 
         steps = max(1, int(steps))
+        
+        # Start total denoising timer
+        t_denoise_total_start = time.perf_counter()
+        
         for i in range(steps, 0, -1):
+            t_step_start = time.perf_counter()
+            
             t = torch.full((B,), i / steps, device=proprio.device, dtype=proprio.dtype)
             x_t = x1 * t.view(-1, 1, 1) + action * (1 - t).view(-1, 1, 1)
             proprio_m, x_t_m = self.action_space.preprocess(proprio, x_t)
+            
             action = self.transformer(
                 domain_id=domain_id,
                 action_with_noise=x_t_m,
@@ -206,12 +245,21 @@ class XVLA(PreTrainedModel):
                 t=t,
                 **enc,
             )
+            
+            t_step_end = time.perf_counter()
+            # Step index: steps - i + 1 goes from 1 to `steps`
+            log.info(f"  Denoise Step {steps - i + 1}/{steps}: {(t_step_end - t_step_start) * 1000:.2f} ms")
+
+        t_denoise_total_end = time.perf_counter()
+        log.info(f"  Total Denoise Steps Time: {(t_denoise_total_end - t_denoise_total_start) * 1000:.2f} ms")
+        
         return self.action_space.postprocess(action), enc
 
     # =============================== FastAPI service =============================
     def _build_app(self, processor):
         """
         Minimal FastAPI app for XVLA inference.
+        NOW includes a batched endpoint.
 
         Args:
             processor: callable(images, text) -> Dict[str, torch.Tensor]
@@ -221,72 +269,173 @@ class XVLA(PreTrainedModel):
             return
 
         app = FastAPI()
+        device = next(self.parameters()).device
+        dtype = next(self.parameters()).dtype
 
-        @app.post("/act")
-        def act(payload: Dict[str, Any]):
+        def _decode_images(payload: SingleActPayload) -> List[Image.Image]:
+            """Decodes images from a single payload."""
+            images = []
+            # Use .model_dump() for Pydantic v2
+            payload_dict = payload.model_dump() 
+            for key in ("image0", "image1", "image2"):
+                if key not in payload_dict or payload_dict[key] is None: 
+                    continue
+                v = json_numpy.loads(payload_dict[key])
+                if isinstance(v, np.ndarray):
+                    if v.ndim == 1:  # encoded bytes
+                        v = cv2.imdecode(v, cv2.IMREAD_COLOR)
+                    images.append(Image.fromarray(v))
+                elif isinstance(v, (list, tuple)):
+                    images.append(Image.fromarray(np.array(v)))
+                elif isinstance(v, str):
+                    images.append(Image.open(v))
+            if not images:
+                raise ValueError("No valid images found in payload.")
+            return images
+
+        def to_model(t: torch.Tensor) -> torch.Tensor:
+            """Helper to move tensor to correct device and dtype."""
+            if not isinstance(t, torch.Tensor):
+                t = torch.as_tensor(t)
+            # cast floats to model dtype, keep integral/bool as-is
+            return t.to(device=device, dtype=dtype) if t.is_floating_point() else t.to(device=device)
+
+        # --- NEW BATCHED ENDPOINT ---
+        # --- FIX: Changed route to match your error log ---
+        @app.post("/act_batched", response_model=List[BatchActResponse])
+        def act_batch(payloads: List[SingleActPayload]):
+            """
+            Processes a batch of inference requests at once.
+            """
+            t_start = time.perf_counter() # Start total timer
             try:
                 self.eval()
-                # Decode up to 3 image inputs
-                images = []
-                for key in ("image0", "image1", "image2"):
-                    if key not in payload: continue
-                    v = json_numpy.loads(payload[key])
-                    if isinstance(v, np.ndarray):
-                        if v.ndim == 1:  # encoded bytes
-                            v = cv2.imdecode(v, cv2.IMREAD_COLOR)
-                        images.append(Image.fromarray(v))
-                    elif isinstance(v, (list, tuple)):
-                        images.append(Image.fromarray(np.array(v)))
-                    elif isinstance(v, str):
-                        images.append(Image.open(v))
-                if not images:
-                    return JSONResponse({"error": "No valid images found."}, status_code=400)
+                
+                batch_size = len(payloads)
+                if batch_size == 0:
+                    return []
 
-                # Multimodal preprocessing by processor
-                inputs = processor(images, payload["language_instruction"])
-                if not {"input_ids", "image_input", "image_mask"}.issubset(inputs):
-                    return JSONResponse({"error": "Processor returned incomplete inputs."}, status_code=400)
+                # --- 1. Build batches by looping over payloads (Collation) ---
+                t_collate_start = time.perf_counter()
 
-                # Build proprio/domain tensors
-                proprio = torch.as_tensor(np.asarray(json_numpy.loads(payload["proprio"])))
-                domain_id = torch.tensor([int(payload["domain_id"])], dtype=torch.long)
+                # --- 1. Build batches by looping over payloads ---
+                all_proc_inputs = []
+                all_proprio = []
+                all_domain_id = []
+                steps = payloads[0].steps # Assume all have the same step count
+                
+                for payload in payloads:
+                    # 1a. Decode images for this sample
+                    images = _decode_images(payload)
+                    
+                    # 1b. Call processor for this sample (B=1)
+                    inputs = processor(images, payload.language_instruction)
+                    all_proc_inputs.append(inputs)
+                    
+                    # 1c. Decode proprio
+                    proprio = torch.as_tensor(np.asarray(json_numpy.loads(payload.proprio)))
+                    all_proprio.append(proprio)
+                    
+                    # 1d. Get domain ID
+                    all_domain_id.append(torch.tensor([int(payload.domain_id)], dtype=torch.long))
 
-                # Align to model's device/dtype
-                device = next(self.parameters()).device
-                dtype = next(self.parameters()).dtype
+                t_collate_end = time.perf_counter()
+                
+                # --- 2. Collate into single batched tensors ---
+                t_stack_start = time.perf_counter()
 
-                def to_model(t: torch.Tensor) -> torch.Tensor:
-                    if not isinstance(t, torch.Tensor):
-                        t = torch.as_tensor(t)
-                    # cast floats to model dtype, keep integral/bool as-is
-                    return t.to(device=device, dtype=dtype) if t.is_floating_point() else t.to(device=device)
+                batched_inputs = {
+                    "input_ids": to_model(torch.stack([d["input_ids"].squeeze(0) for d in all_proc_inputs])),
+                    "image_input": to_model(torch.stack([d["image_input"].squeeze(0) for d in all_proc_inputs])),
+                    "image_mask": to_model(torch.stack([d["image_mask"].squeeze(0) for d in all_proc_inputs])),
+                    "proprio": to_model(torch.stack(all_proprio)),
+                    "domain_id": to_model(torch.cat(all_domain_id)),
+                }
+                
+                t_stack_end = time.perf_counter()
+                
+                # --- 3. Run single batched inference ---
+                skip_action_generation = all([p.skip_action_generation for p in payloads])
+                
+                t_infer_start = time.perf_counter()
 
-                inputs = {k: to_model(v) for k, v in inputs.items()}
-                inputs.update({
-                    "proprio": to_model(proprio.unsqueeze(0)),
-                    "domain_id": domain_id.to(device),
-                })
+                if skip_action_generation:
+                    action_dim = self.action_space.dim_action
+                    action_len = self.num_actions
+                    action_tensor = torch.zeros(
+                        (batch_size, action_len, action_dim), 
+                        dtype=dtype, 
+                        device=device
+                    )
+                    
+                    with torch.no_grad():
+                        enc = self.forward_vlm(
+                            batched_inputs["input_ids"],
+                            batched_inputs["image_input"],
+                            batched_inputs["image_mask"],
+                        )
+                    vlm_features = enc["vlm_features"]  # Shape: [B, Seq, Dim]
+                    vlm_embedding_tensor = vlm_features[:, -1, :] # Shape: [B, Dim]
+                else:
+                    action_tensor, enc = self.generate_actions(**batched_inputs, steps=steps)
 
-                # Inference
-                steps = int(payload.get("steps", 10))
-                action_tensor, enc = self.generate_actions(**inputs, steps=steps)
+                    # Extract VLM embeddings
+                    vlm_features = enc["vlm_features"]  # Shape: [B, Seq, Dim]
+                    vlm_embedding_tensor = vlm_features[:, -1, :] # Shape: [B, Dim]
 
-                # Extract the VLM embedding (last token of the sequence)
-                vlm_features = enc["vlm_features"]  # Shape: [B, Seq, Dim]
-                # We take the embedding of the last token as the state representation
-                vlm_embedding_tensor = vlm_features[:, -1, :] # Shape: [B, Dim]
+                t_infer_end = time.perf_counter()
 
-                # Format for JSON response
-                action = action_tensor.squeeze(0).float().cpu().numpy()
-                embedding = vlm_embedding_tensor.squeeze(0).float().cpu().numpy()
+                # --- 4. Un-batch results and format response ---
+                t_format_start = time.perf_counter()
 
-                return JSONResponse({"action": action.tolist(), "embedding": embedding.tolist()})
-
-
+                response_list = []
+                for i in range(batch_size):
+                    action = action_tensor[i].float().cpu().numpy()
+                    embedding = vlm_embedding_tensor[i].float().cpu().numpy()
+                    response_list.append(
+                        BatchActResponse(action=action.tolist(), embedding=embedding.tolist())
+                    )
+                
+                t_format_end = time.perf_counter()
+                
+                # --- 5. Log Timings ---
+                t_total_end = time.perf_counter()
+                
+                log.info(f"--- Batch Profile (B={batch_size}) ---")
+                log.info(f"Collation Loop: {(t_collate_end - t_collate_start) * 1000:.2f} ms")
+                log.info(f"Tensor Stacking:  {(t_stack_end - t_stack_start) * 1000:.2f} ms")
+                log.info(f"GPU Inference:    {(t_infer_end - t_infer_start) * 1000:.2f} ms")
+                log.info(f"Response Format:  {(t_format_end - t_format_start) * 1000:.2f} ms")
+                log.info(f"---------------------------------")
+                log.info(f"Total Request:  {(t_total_end - t_start) * 1000:.2f} ms")
+                log.info(f"Time Per Item:  {((t_total_end - t_start) * 1000) / batch_size:.2f} ms/item")
+                
+                return response_list
 
             except Exception:
                 logging.error(traceback.format_exc())
-                return JSONResponse({"error": "Request failed"}, status_code=400)
+                return JSONResponse({"error": "Batched request failed"}, status_code=500)
+        
+        # --- Original Single Endpoint (for compatibility) ---
+        @app.post("/act")
+        def act(payload: Dict[str, Any]):
+            # This is a fallback wrapper for the new batched Pydantic model
+            try:
+                single_payload = SingleActPayload(**payload)
+            except Exception as e:
+                logging.error(f"Payload validation error: {e}")
+                return JSONResponse({"error": f"Invalid payload: {e}"}, status_code=400)
+                
+            # Call the batched endpoint with a list of one
+            batched_response = act_batch([single_payload])
+            
+            # Return the first (and only) result
+            if isinstance(batched_response, list) and len(batched_response) > 0:
+                # Need to convert Pydantic model back to dict for JSONResponse
+                return batched_response[0].model_dump() 
+            else:
+                logging.error("Batched endpoint failed to return valid single response.")
+                return JSONResponse({"error": "Request failed during batched processing"}, status_code=500)
 
         self.app = app
 
